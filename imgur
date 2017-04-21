@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+
+set -o pipefail
+
+### Configuration ######################################################
+
+APP_ID=
+APP_HISTORY=${APP_HISTORY:-"${HOME}/.imgur_history"}
+
+API_IMAGE='https://api.imgur.com/3/image'
+API_ALBUM='https://api.imgur.com/3/album'
+API_STATS='https://api.imgur.com/3/credits'
+
+### Utilities ##########################################################
+
+function help {
+  local program=$(app_name)
+  local message="\
+ABOUT
+    A simple shell script for uploading images to imgur.com anonymously.
+
+USAGE
+    ${program} [COMMAND] [ARGUMENTS]...
+
+EXAMPLES
+    # upload a single image
+    ${program} upload /path/picture.png
+
+    # upload multiple images to an album
+    ${program} upload https://example.com/a.gif data:image/gif;base64,meow
+
+    # delete remote files
+    ${program} delete album:secretkey image:secretkey
+
+COMMANDS
+    * help
+        Show this help information.
+
+    * config
+        View configurations.
+
+    * upload [FILES|URLS]...
+        Upload multiple image files from the local computer or remote sites.
+        If multiple files or urls are provided, put them all in a new album.
+
+        Result: [KEY+URL]...
+
+    * delete [KEYS]...
+        Delete all remote images associated with the keys.
+        A key is the secret alphanumeric string received after an upload.
+        When an album is deleted, its associated images are not deleted.
+
+    * clear
+        Delete all albums and images being logged in the history file.
+
+    * stats
+        Query the online statistics of the app usage.
+
+SETTINGS
+    These environment variables are recognized by the script:
+
+        APP_ID
+            The client ID registered on \"https://api.imgur.com\".
+            If it is not provided, the built-in ID will be used.
+
+        APP_HISTORY
+            The path of a file to store your upload history.
+            To disable this feature, set it to \"NONE\".
+
+LICENSE
+                    DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+                             Version 2, December 2004
+
+    Copyright (C) 2017 Jak Wings https://github.com/jakwings/bash-imgur
+
+    Everyone is permitted to copy and distribute verbatim or modified copies of
+    this license document, and changing it is allowed as long as the name is
+    changed.
+
+                    DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+          TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+
+     0. You just DO WHAT THE FUCK YOU WANT TO."
+
+  if is_executable "${PAGER}"; then
+    "${PAGER}" <<<"${message}"
+  else
+    echo "${message}"
+  fi
+}
+
+function app_name {
+  if is_executable basename; then
+    basename -- "$0"
+  else
+    echo "$0"
+  fi
+}
+
+function die {
+  echo
+  echo '*** ERROR START **************************'
+  for line in "$@"; do echo "$line"; done
+  echo '**************************** ERROR END ***'
+  echo
+  exit -1
+} >&2
+
+function warn {
+  APP_EXITCODE=-2
+  echo
+  echo '/// WARNING START ////////////////////////'
+  for line in "$@"; do echo "$line"; done
+  echo '////////////////////////// WARNING END ///'
+  echo
+} >&2
+
+function is_executable {
+  [[ -x "$(type -p "$1")" ]]
+}
+
+function require {
+  for cmd in "$@"; do
+    is_executable "${cmd}" || die "Required program \"${cmd}\" not found."
+  done
+}
+
+function log {
+  echo "$@"
+
+  if [[ NONE == "${APP_HISTORY}" ]]; then
+    return 0
+  fi
+  if [[ -f "${APP_HISTORY}" || ! -e "${APP_HISTORY}" ]]; then
+    echo "$@" >> "${APP_HISTORY}"
+  fi
+}
+
+### imgur ##############################################################
+
+function imgur {
+  local command=$1; shift
+  case "${command}" in
+    config) imgur_config ;;
+    upload) imgur_upload "$@" ;;
+    delete) imgur_delete "$@" ;;
+    clear) imgur_clear ;;
+    stats) imgur_stats ;;
+    help) help; exit 0 ;;
+    *)
+      die "Invalid command: ${command:-(none)}" '' \
+          "For help, please run: $(app_name) help"
+  esac
+
+  exit "${APP_EXITCODE:-0}"
+}
+
+function imgur_check {
+  require curl jq
+
+  if [[ -z "${APP_ID}" ]]; then
+    die 'The built-in APP_ID is missing.' \
+        "$(imgur_config)" \
+        'Please check your configuration.'
+  fi
+}
+
+function imgur_curl {
+  curl --silent --header "Authorization: Client-ID ${APP_ID}" "$@"
+}
+
+function imgur_jq {
+  jq --raw-output "$@"
+}
+
+function imgur_config {
+  echo "APP_ID: ${APP_ID:-(none)}"
+  echo "APP_HISTORY: ${APP_HISTORY:-(none)}"
+}
+
+function imgur_upload {
+  imgur_check
+
+  if [[ "${#@}" -gt 1 ]]; then
+    local response=$(imgur_curl --data privacy=hidden "${API_ALBUM}")
+    if [[ true == "$(imgur_jq <<< "${response}" .success)" ]]; then
+      local album=$(imgur_jq <<< "${response}" .data.deletehash)
+      local result=$(
+        imgur_jq <<< "${response}" \
+          '"album:\(.data.deletehash) https://imgur.com/a/\(.data.id)"'
+      )
+      log "${result}"
+    else
+      die 'Failed to create an album.'
+    fi
+  fi
+
+  for path in "$@"; do
+    if [[ "${path}" =~ ^https?:// ]]; then
+      local response=$(
+        imgur_curl ${album:+--data album="${album}"} --data type=URL \
+          --data-urlencode "image=${path}" "${API_IMAGE}"
+      )
+    elif [[ "${path}" =~ ^data:[^,\;]*\;base64, ]]; then
+      local response=$(
+        imgur_curl ${album:+--data album="${album}"} --data type=base64 \
+          --data-urlencode "image=${path#*,}" "${API_IMAGE}"
+      )
+    elif [[ -f "${path}" ]]; then
+      local response=$(
+        imgur_curl ${album:+--form album="${album}"} --form type=file \
+          --form "image=@${path}" "${API_IMAGE}"
+      )
+    else
+      warn "File not found: ${path:-(none)}"
+      continue
+    fi
+
+    if [[ true == "$(imgur_jq <<< "${response}" .success)" ]]; then
+      log "$(
+        imgur_jq <<< "${response}" \
+          '"image:\(.data.deletehash) \(.data.link | sub("^http:"; "https:"))"'
+      )"
+    else
+      warn "$(imgur_jq <<< "${response}" .data.error)"
+      continue
+    fi
+  done
+}
+
+function imgur_delete {
+  imgur_check
+
+  for key in "$@"; do
+    if [[ ! "${key}" =~ ^(image|album):[a-zA-Z0-9]+$ ]]; then
+      warn "Invalid key for deletion: ${key:-(none)}"
+      continue
+    fi
+
+    local type=${key%%:*}
+    local hash=${key#*:}
+
+    local response=$(
+      if [[ image == "${type}" ]]; then
+        imgur_curl --request DELETE "${API_IMAGE}/${hash}"
+      else
+        imgur_curl --request DELETE "${API_ALBUM}/${hash}"
+      fi
+    )
+
+    if [[ true == "$(imgur_jq <<< "${response}" .success)" ]]; then
+      log "${key} deleted"
+    else
+      warn "$(imgur_jq <<< "${response}" .data.error)"
+      continue
+    fi
+  done
+}
+
+function imgur_clear {
+  imgur_check
+
+  read -r -p 'Do you really want to clear all your data? [y|N]: ' answer
+  if [[ ! "${answer}" =~ ^[yY] ]]; then
+    exit 0
+  fi
+
+  declare -a keys
+  declare -A table
+  while read -r line; do
+    local key=${line%% *}
+    local num=${#keys[@]}
+    if [[ "${line}" =~ deleted$ ]]; then
+      local num=${table["${key}"]}
+      unset keys["${num}"]
+      unset table["${key}"]
+    else
+      keys[$num]=$key
+      table["${key}"]=$num
+    fi
+  done < "${APP_HISTORY}"
+
+  imgur_delete "${keys[@]}"
+
+  if [[ -n "${APP_EXITCODE}" ]]; then
+    die 'Clean-up aborted'
+  fi
+  if [[ -f "${APP_HISTORY}" ]]; then
+    require rm
+    rm -i -- "${APP_HISTORY}" || die 'Clean-up failed'
+  fi
+
+  echo 'Clean-up finished'
+}
+
+function imgur_stats {
+  imgur_check
+
+  local response=$(imgur_curl "${API_STATS}")
+  if [[ true == "$(imgur_jq <<< "${response}" .success)" ]]; then
+    imgur_jq <<< "${response}" \
+      '.data | to_entries
+             | map (
+                     .key + ": " + (
+                                     if .key == "UserReset" then
+                                       .value | todate
+                                     else
+                                       .value | tostring
+                                     end
+                                   )
+                   )
+             | .[]'
+  else
+    die "$(imgur_jq <<< "${response}" .data.error)"
+  fi
+}
+
+### Execution ##########################################################
+
+imgur "$@"
