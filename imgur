@@ -209,7 +209,7 @@ function imgur_upload {
     elif [[ -f "${path}" ]]; then
       local response=$(
         imgur_curl ${album:+--form album="${album}"} --form type=file \
-          --form "image=@${path}" "${API_IMAGE}"
+          --form "image=@\"$(printf %q "${path}")\";filename=thanks" "${API_IMAGE}"
       )
     else
       warn "File not found: ${path:-(none)}"
