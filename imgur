@@ -15,7 +15,7 @@ API_STATS='https://api.imgur.com/3/credits'
 
 function help {
   local program=$(app_name)
-  local message="\
+  show "\
 ABOUT
     A simple shell script for uploading images to imgur.com anonymously.
 
@@ -50,6 +50,9 @@ COMMANDS
         A key is the secret alphanumeric string received after an upload.
         When an album is deleted, its associated images are not deleted.
 
+    * history
+        View upload history.
+
     * clear
         Delete all albums and images being logged in the history file.
 
@@ -81,12 +84,6 @@ LICENSE
           TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
      0. You just DO WHAT THE FUCK YOU WANT TO."
-
-  if is_executable "${PAGER}"; then
-    "${PAGER}" <<<"${message}"
-  else
-    echo "${message}"
-  fi
 }
 
 function app_name {
@@ -125,6 +122,14 @@ function require {
   done
 }
 
+function show {
+  if is_executable "${PAGER}"; then
+    "${PAGER}" <<<"$1"
+  else
+    echo "$1"
+  fi
+}
+
 function log {
   echo "$@"
 
@@ -147,6 +152,7 @@ function imgur {
     config) imgur_config ;;
     upload) imgur_upload "$@" ;;
     delete) imgur_delete "$@" ;;
+    history) imgur_history "$@" ;;
     clear) imgur_clear ;;
     stats) imgur_stats ;;
     help) help; exit 0 ;;
@@ -258,6 +264,18 @@ function imgur_delete {
       continue
     fi
   done
+}
+
+function imgur_history {
+  if [[ NONE != "${APP_HISTORY}" && -e "${APP_HISTORY}" ]]; then
+    if [[ -f "${APP_HISTORY}" ]]; then
+      show "$(< "${APP_HISTORY}")"
+    else
+      die "Not a regular file: ${APP_HISTORY}"
+    fi
+  else
+    echo '(none)'
+  fi
 }
 
 function imgur_clear {
