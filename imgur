@@ -182,6 +182,16 @@ function imgur_jq {
   jq --raw-output "$@"
 }
 
+function imgur_jq_ok {
+  local response=$1
+  [[ true == "$(imgur_jq <<< "${response}" .success)" ]]
+}
+
+function imgur_jq_error {
+  local response=$1
+  echo "$(imgur_jq <<< "${response}" .data.error)"
+}
+
 function imgur_config {
   echo "APP_ID: ${APP_ID:-(none)}"
   echo "APP_HISTORY: ${APP_HISTORY:-(none)}"
@@ -192,7 +202,7 @@ function imgur_upload {
 
   if [[ "${#@}" -gt 1 ]]; then
     local response=$(imgur_curl --data privacy=hidden "${API_ALBUM}")
-    if [[ true == "$(imgur_jq <<< "${response}" .success)" ]]; then
+    if imgur_jq_ok "${response}"; then
       local album=$(imgur_jq <<< "${response}" .data.deletehash)
       local result=$(
         imgur_jq <<< "${response}" \
@@ -225,13 +235,13 @@ function imgur_upload {
       continue
     fi
 
-    if [[ true == "$(imgur_jq <<< "${response}" .success)" ]]; then
+    if imgur_jq_ok "${response}"; then
       log "$(
         imgur_jq <<< "${response}" \
           '"image:\(.data.deletehash) \(.data.link | sub("^http:"; "https:"))"'
       )"
     else
-      warn "$(imgur_jq <<< "${response}" .data.error)"
+      warn "$(imgur_jq_error "${response}")"
       continue
     fi
   done
@@ -257,10 +267,10 @@ function imgur_delete {
       fi
     )
 
-    if [[ true == "$(imgur_jq <<< "${response}" .success)" ]]; then
+    if imgur_jq_ok "${response}"; then
       log "${key} deleted"
     else
-      warn "$(imgur_jq <<< "${response}" .data.error)"
+      warn "$(imgur_jq_error "${response}")"
       continue
     fi
   done
@@ -318,7 +328,7 @@ function imgur_stats {
   imgur_check
 
   local response=$(imgur_curl "${API_STATS}")
-  if [[ true == "$(imgur_jq <<< "${response}" .success)" ]]; then
+  if imgur_jq_ok "${response}"; then
     imgur_jq <<< "${response}" \
       '.data | to_entries
              | map (
@@ -332,7 +342,7 @@ function imgur_stats {
                    )
              | .[]'
   else
-    die "$(imgur_jq <<< "${response}" .data.error)"
+    die "$(imgur_jq_error "${response}")"
   fi
 }
 
