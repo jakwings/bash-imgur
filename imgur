@@ -178,6 +178,12 @@ function imgur_curl {
   curl --silent --header "Authorization: Client-ID ${APP_ID}" "$@"
 }
 
+function imgur_curl_escape {
+  local backslashes_escaped=${1//\\/\\\\}
+  local doublequotes_escaped=${backslashes_escaped//\"/\\\"}
+  echo "${doublequotes_escaped}"
+}
+
 function imgur_jq {
   jq --raw-output "$@"
 }
@@ -228,7 +234,7 @@ function imgur_upload {
     elif [[ -f "${path}" ]]; then
       local response=$(
         imgur_curl ${album:+--form album="${album}"} --form type=file \
-          --form "image=@\"$(printf %q "${path}")\";filename=thanks" "${API_IMAGE}"
+          --form "image=@\"$(imgur_curl_escape "${path}")\";filename=thanks" "${API_IMAGE}"
       )
     else
       warn "File not found: ${path:-(none)}"
