@@ -14,7 +14,7 @@ API_STATS='https://api.imgur.com/3/credits'
 ### Utilities ##########################################################
 
 function help {
-  local program=$(app_name)
+  local program=$(printf %q "$(app_name)")
   show "\
 ABOUT
     A simple shell script for uploading images to imgur.com anonymously.
@@ -158,7 +158,7 @@ function imgur {
     help) help; exit 0 ;;
     *)
       die "Invalid command: ${command:-(none)}" '' \
-          "For help, please run: $(app_name) help"
+          "For help, please run: $(printf %q "$(app_name)") help"
   esac
 
   exit "${APP_EXITCODE:-0}"
