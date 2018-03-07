@@ -207,7 +207,7 @@ function imgur_upload {
   imgur_check
 
   if [[ "${#@}" -gt 1 ]]; then
-    local response=$(imgur_curl --data privacy=hidden "${API_ALBUM}")
+    local response=$(imgur_curl --data privacy=hidden -- "${API_ALBUM}")
     if imgur_jq_ok "${response}"; then
       local album=$(imgur_jq <<< "${response}" .data.deletehash)
       local result=$(
@@ -224,17 +224,18 @@ function imgur_upload {
     if [[ "${path}" =~ ^https?:// ]]; then
       local response=$(
         imgur_curl ${album:+--data album="${album}"} --data type=URL \
-          --data-urlencode "image=${path}" "${API_IMAGE}"
+          --data-urlencode "image=${path}" -- "${API_IMAGE}"
       )
     elif [[ "${path}" =~ ^data:[^,\;]*\;base64, ]]; then
       local response=$(
         imgur_curl ${album:+--data album="${album}"} --data type=base64 \
-          --data-urlencode "image=${path#*,}" "${API_IMAGE}"
+          --data-urlencode "image=${path#*,}" -- "${API_IMAGE}"
       )
     elif [[ -f "${path}" ]]; then
       local response=$(
         imgur_curl ${album:+--form album="${album}"} --form type=file \
-          --form "image=@\"$(imgur_curl_escape "${path}")\";filename=thanks" "${API_IMAGE}"
+          --form "image=@\"$(imgur_curl_escape "${path}")\";filename=thanks" \
+          -- "${API_IMAGE}"
       )
     else
       warn "File not found: ${path:-(none)}"
@@ -267,9 +268,9 @@ function imgur_delete {
 
     local response=$(
       if [[ image == "${type}" ]]; then
-        imgur_curl --request DELETE "${API_IMAGE}/${hash}"
+        imgur_curl --request DELETE -- "${API_IMAGE}/${hash}"
       else
-        imgur_curl --request DELETE "${API_ALBUM}/${hash}"
+        imgur_curl --request DELETE -- "${API_ALBUM}/${hash}"
       fi
     )
 
@@ -333,7 +334,7 @@ function imgur_clear {
 function imgur_stats {
   imgur_check
 
-  local response=$(imgur_curl "${API_STATS}")
+  local response=$(imgur_curl -- "${API_STATS}")
   if imgur_jq_ok "${response}"; then
     imgur_jq <<< "${response}" \
       '.data | to_entries
