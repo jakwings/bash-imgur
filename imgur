@@ -13,6 +13,10 @@ API_STATS='https://api.imgur.com/3/credits'
 
 ### Utilities ##########################################################
 
+function echo {
+  printf '%s\n' "$*"
+}
+
 function help {
   local program=$(printf %q "$(app_name)")
   show "\
