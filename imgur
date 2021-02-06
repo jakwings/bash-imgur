@@ -4,8 +4,8 @@ set -o pipefail
 
 ### Configuration ######################################################
 
-APP_ID=
-APP_HISTORY=${APP_HISTORY:-"${HOME}/.imgur_history"}
+APP_ID="${IMGUR_APP_ID:-XXXXXXXXXXXXXXX}"
+APP_HISTORY="${IMGUR_APP_HISTORY:-${HOME}/.imgur_history}"
 
 API_IMAGE='https://api.imgur.com/3/image'
 API_ALBUM='https://api.imgur.com/3/album'
@@ -18,7 +18,7 @@ function echo {
 }
 
 function help {
-  local program=$(printf %q "$(app_name)")
+  local program="$(printf %q "$(app_name)")"
   show "\
 ABOUT
     A simple shell script for uploading images to imgur.com anonymously.
@@ -104,7 +104,7 @@ function die {
   for line in "$@"; do echo "$line"; done
   echo '**************************** ERROR END ***'
   echo
-  exit -1
+  exit 1
 } >&2
 
 function warn {
@@ -117,7 +117,7 @@ function warn {
 } >&2
 
 function is_executable {
-  [[ -x "$(type -p "$1")" ]]
+  [ -x "$(type -p -- "$1")" ]
 }
 
 function require {
@@ -137,10 +137,10 @@ function show {
 function log {
   echo "$@"
 
-  if [[ NONE == "${APP_HISTORY}" ]]; then
+  if [ NONE = "${APP_HISTORY}" ]; then
     return 0
   fi
-  if [[ -f "${APP_HISTORY}" || ! -e "${APP_HISTORY}" ]]; then
+  if [ -f "${APP_HISTORY}" ] || [ ! -e "${APP_HISTORY}" ]; then
     if is_executable date && [[ "$(date +%FT%T%z)" =~ ^(.+)([0-9]{2})$ ]]; then
       echo "${BASH_REMATCH[1]}:${BASH_REMATCH[2]}" >> "${APP_HISTORY}"
     fi
@@ -151,7 +151,7 @@ function log {
 ### imgur ##############################################################
 
 function imgur {
-  local command=$1; shift
+  local command="$1"; shift
   case "${command}" in
     config) imgur_config ;;
     upload) imgur_upload "$@" ;;
@@ -171,7 +171,7 @@ function imgur {
 function imgur_check {
   require curl jq
 
-  if [[ -z "${APP_ID}" ]]; then
+  if [ -z "${APP_ID}" ]; then
     die 'The built-in APP_ID is missing.' \
         "$(imgur_config)" \
         'Please check your configuration.'
@@ -183,8 +183,8 @@ function imgur_curl {
 }
 
 function imgur_curl_escape {
-  local backslashes_escaped=${1//\\/\\\\}
-  local doublequotes_escaped=${backslashes_escaped//\"/\\\"}
+  local backslashes_escaped="${1//\\/\\\\}"
+  local doublequotes_escaped="${backslashes_escaped//\"/\\\"}"
   echo "${doublequotes_escaped}"
 }
 
@@ -193,12 +193,12 @@ function imgur_jq {
 }
 
 function imgur_jq_ok {
-  local response=$1
-  [[ true == "$(imgur_jq <<< "${response}" .success)" ]]
+  local response="$1"
+  [ true = "$(imgur_jq <<< "${response}" .success)" ]
 }
 
 function imgur_jq_error {
-  local response=$1
+  local response="$1"
   echo "$(imgur_jq <<< "${response}" .data.error)"
 }
 
@@ -210,14 +210,14 @@ function imgur_config {
 function imgur_upload {
   imgur_check
 
-  if [[ "${#@}" -gt 1 ]]; then
-    local response=$(imgur_curl --data privacy=hidden -- "${API_ALBUM}")
+  if [ "$#" -gt 1 ]; then
+    local response="$(imgur_curl --data privacy=hidden -- "${API_ALBUM}")"
     if imgur_jq_ok "${response}"; then
-      local album=$(imgur_jq <<< "${response}" .data.deletehash)
-      local result=$(
+      local album="$(imgur_jq <<< "${response}" .data.deletehash)"
+      local result="$(
         imgur_jq <<< "${response}" \
           '"album:\(.data.deletehash) https://imgur.com/a/\(.data.id)"'
-      )
+      )"
       log "${result}"
     else
       die 'Failed to create an album.'
@@ -226,21 +226,21 @@ function imgur_upload {
 
   for path in "$@"; do
     if [[ "${path}" =~ ^https?:// ]]; then
-      local response=$(
+      local response="$(
         imgur_curl ${album:+--data album="${album}"} --data type=URL \
           --data-urlencode "image=${path}" -- "${API_IMAGE}"
-      )
+      )"
     elif [[ "${path}" =~ ^data:[^,\;]*\;base64, ]]; then
-      local response=$(
+      local response="$(
         imgur_curl ${album:+--data album="${album}"} --data type=base64 \
           --data-urlencode "image=${path#*,}" -- "${API_IMAGE}"
-      )
-    elif [[ -f "${path}" ]]; then
-      local response=$(
+      )"
+    elif [ -f "${path}" ]; then
+      local response="$(
         imgur_curl ${album:+--form album="${album}"} --form type=file \
           --form "image=@\"$(imgur_curl_escape "${path}")\";filename=thanks" \
           -- "${API_IMAGE}"
-      )
+      )"
     else
       warn "File not found: ${path:-(none)}"
       continue
@@ -267,16 +267,16 @@ function imgur_delete {
       continue
     fi
 
-    local type=${key%%:*}
-    local hash=${key#*:}
+    local type="${key%%:*}"
+    local hash="${key#*:}"
 
-    local response=$(
-      if [[ image == "${type}" ]]; then
+    local response="$(
+      if [ image = "${type}" ]; then
         imgur_curl --request DELETE -- "${API_IMAGE}/${hash}"
       else
         imgur_curl --request DELETE -- "${API_ALBUM}/${hash}"
       fi
-    )
+    )"
 
     if imgur_jq_ok "${response}"; then
       log "${key} deleted"
@@ -288,8 +288,8 @@ function imgur_delete {
 }
 
 function imgur_history {
-  if [[ NONE != "${APP_HISTORY}" && -e "${APP_HISTORY}" ]]; then
-    if [[ -f "${APP_HISTORY}" ]]; then
+  if [ NONE != "${APP_HISTORY}" ] && [ -e "${APP_HISTORY}" ]; then
+    if [ -f "${APP_HISTORY}" ]; then
       show "$(< "${APP_HISTORY}")"
     else
       die "Not a regular file: ${APP_HISTORY}"
@@ -310,24 +310,24 @@ function imgur_clear {
   declare -a keys
   declare -A table
   while read -r line; do
-    local key=${line%% *}
-    local num=${#keys[@]}
+    local key="${line%% *}"
+    local num="${#keys[@]}"
     if [[ "${line}" =~ deleted$ ]]; then
-      local num=${table["${key}"]}
+      local num="${table["${key}"]}"
       unset keys["${num}"]
       unset table["${key}"]
     elif [[ "${line}" =~ ^(album|image): ]]; then
-      keys[$num]=$key
-      table["${key}"]=$num
+      keys["${num}"]="$key"
+      table["${key}"]="$num"
     fi
   done < "${APP_HISTORY}"
 
   imgur_delete "${keys[@]}"
 
-  if [[ -n "${APP_EXITCODE}" ]]; then
+  if [ -n "${APP_EXITCODE}" ]; then
     die 'Clean-up aborted'
   fi
-  if [[ -f "${APP_HISTORY}" ]]; then
+  if [ -f "${APP_HISTORY}" ]; then
     require rm
     rm -i -- "${APP_HISTORY}" || die 'Clean-up failed'
   fi
@@ -338,7 +338,7 @@ function imgur_clear {
 function imgur_stats {
   imgur_check
 
-  local response=$(imgur_curl -- "${API_STATS}")
+  local response="$(imgur_curl -- "${API_STATS}")"
   if imgur_jq_ok "${response}"; then
     imgur_jq <<< "${response}" \
       '.data | to_entries
